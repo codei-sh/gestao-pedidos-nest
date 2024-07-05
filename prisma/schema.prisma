@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String   @id @default(uuid())
+  code     Int   @default(autoincrement()) @unique
+  name     String
+  email    String   @unique
+  password String
+  active   Boolean
+  roles    Role[]   @relation("UserRoles")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Role {
+  id    String   @id @default(uuid())
+  code  BigInt   @default(autoincrement()) @unique
+  nome  String
+  users User[]   @relation("UserRoles")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@map("roles")
+}
+
+
+model Product { 
+  id String @id @default(uuid())
+  code BigInt @default(autoincrement()) @unique
+  name String?
+  description String
+  stock Int 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+
+  @@map("products")
+}
