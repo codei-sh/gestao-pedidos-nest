@@ -9,19 +9,17 @@ export class OrdersService {
   async registerOrder(data: any): Promise<Order> {
     const {
       client_id,
+      user_id,
       delivery_address_id,
       products,
       amount,
       deliveryDate,
       observations,
-      // Novo campo user_id
     } = data;
 
     const formattedDeliveryDate = new Date(deliveryDate);
 
-    // Inicia uma transação para garantir que a criação do pedido e a atualização do estoque sejam feitas atomically
     const result = await this.prisma.$transaction(async (prisma) => {
-      // Cria o pedido
       const newOrder = await prisma.order.create({
         data: {
           client: { connect: { id: client_id } },
@@ -29,7 +27,7 @@ export class OrdersService {
           amount: Number(amount),
           deliveryDate: formattedDeliveryDate,
           observations,
-          user: { connect: { id: 'ca2015ec-3748-476f-8594-572d9930fb43' } }, // Conecta o usuário ao pedido
+          user: { connect: { id: user_id } }, // Conecta o usuário ao pedido
           products: {
             create: products.map((product: any) => ({
               product: { connect: { id: product.product_id } },
@@ -59,12 +57,11 @@ export class OrdersService {
   }
 
   async findAll(): Promise<Order[]> {
-    // Buscar todos os pedidos
     const orders = await this.prisma.order.findMany({
       include: {
         client: true,
         deliveryAddress: true,
-        user: true, // Inclui informações do usuário
+        user: true,
       },
     });
 
@@ -91,5 +88,29 @@ export class OrdersService {
     }
 
     return order;
+  }
+
+  async findByUser(userId: string): Promise<Order[]> {
+    const orders = await this.prisma.order.findMany({
+      where: { user_id: userId },
+      include: {
+        client: true,
+        deliveryAddress: true,
+        user: true,
+        products: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!orders || orders.length === 0) {
+      throw new NotFoundException(
+        `Orders for user with ID ${userId} not found`,
+      );
+    }
+
+    return orders;
   }
 }

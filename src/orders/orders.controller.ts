@@ -15,6 +15,11 @@ export class OrdersController {
     return this.ordersService.findAll();
   }
 
+  @Get('user/:id')
+  async findByUser(@Param('id') id: string) {
+    return this.ordersService.findByUser(id);
+  }
+
   @Get('show/:id')
   async findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
