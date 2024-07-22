@@ -17,6 +17,7 @@ model User {
   roles     Role[]   @relation("UserRoles")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  Order     Order[]
 
   @@map("users")
 }
@@ -33,14 +34,15 @@ model Role {
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  code        Int      @unique @default(autoincrement())
-  name        String?
-  description String
-  price       Float
-  stock       Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String         @id @default(uuid())
+  code         Int            @unique @default(autoincrement())
+  name         String?
+  description  String
+  price        Float
+  stock        Int
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  OrderProduct OrderProduct[]
 
   @@map("products")
 }
@@ -64,26 +66,30 @@ model Client {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  Order     Order[]
 
   @@map("clients")
 }
 
 model Address {
-  id         String   @id @default(uuid())
-  code       Int      @unique @default(autoincrement())
-  active     Boolean  @default(true)
-  zip_code   String
-  street     String
-  number     String
-  complement String?
-  city       String
-  state      String
-  table      String
-  table_id   String
-  sector_id  String
-  sector     Sector   @relation(fields: [sector_id], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  code         Int      @unique @default(autoincrement())
+  active       Boolean  @default(true)
+  zip_code     String
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  link_maps    String?
+  table        String
+  table_id     String
+  sector_id    String
+  sector       Sector   @relation(fields: [sector_id], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  Order        Order[]
 
   @@map("addresses")
 }
@@ -112,4 +118,36 @@ model Phones {
   updatedAt     DateTime  @updatedAt
 
   @@map("phones")
+}
+
+model Order {
+  id                  String         @id @default(uuid())
+  code                Int            @unique @default(autoincrement())
+  client_id           String
+  deliveryAddress     Address        @relation(fields: [delivery_address_id], references: [id], onDelete: Cascade)
+  delivery_address_id String
+  products            OrderProduct[]
+  amount              Float
+  deliveryDate        DateTime
+  observations        String?        @db.LongText
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  user_id             String
+  user                User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  client              Client         @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  @@map("orders")
+}
+
+model OrderProduct {
+  id         String   @id @default(uuid())
+  order      Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order_id   String
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  product_id String
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("order_products")
 }

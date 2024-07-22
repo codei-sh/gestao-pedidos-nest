@@ -23,6 +23,7 @@ export class ClientsService {
           street: address.street,
           number: address.number,
           complement: address.complement,
+          neighborhood: address.neighborhood,
           city: address.city,
           state: address.state,
           table: 'clients',
@@ -36,13 +37,50 @@ export class ClientsService {
       const phoneCreated = await prisma.phones.create({
         data: {
           phone: phone,
-          type_phone_id: '2a5615d0-60e3-4e8a-b86e-2f0571f5c1ef',
+          type_phone_id: 'cef8eb9d-c167-4725-9ab1-2f7b4f41f8ee',
           table: 'clients',
           table_id: client.id,
         },
       });
 
       return { client, address: addressRecord, phone: phoneCreated };
+    });
+  }
+
+  async findAllClients() {
+    // Buscar todos os clientes
+    const clients = await this.prisma.client.findMany();
+
+    // Buscar os endereços e telefones associados a cada cliente
+    const clientIds = clients.map((client) => client.id);
+
+    const addresses = await this.prisma.address.findMany({
+      where: {
+        table: 'clients',
+        table_id: {
+          in: clientIds,
+        },
+      },
+    });
+
+    const phones = await this.prisma.phones.findMany({
+      where: {
+        table: 'clients',
+        table_id: {
+          in: clientIds,
+        },
+      },
+    });
+
+    // Associar endereços e telefones aos clientes
+    return clients.map((client) => {
+      return {
+        ...client,
+        addresses: addresses.filter(
+          (address) => address.table_id === client.id,
+        ),
+        phones: phones.filter((phone) => phone.table_id === client.id),
+      };
     });
   }
 }

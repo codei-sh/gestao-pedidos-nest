@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 
 interface RegisterClientDto {
@@ -23,5 +23,10 @@ export class ClientsController {
   @Post('register')
   async registerClient(@Body() registerClientDto: RegisterClientDto) {
     return this.clientsService.registerClient(registerClientDto);
+  }
+
+  @Get('index')
+  async findAll() {
+    return this.clientsService.findAllClients();
   }
 }
