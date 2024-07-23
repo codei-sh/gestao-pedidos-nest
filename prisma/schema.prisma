@@ -59,14 +59,15 @@ model Sector {
 }
 
 model Client {
-  id        String   @id @default(uuid())
-  code      Int      @unique @default(autoincrement())
-  name      String
-  cpf       String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  Order     Order[]
+  id            String   @id @default(uuid())
+  code          Int      @unique @default(autoincrement())
+  name          String
+  cpf           String?
+  reference_day String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  Order         Order[]
 
   @@map("clients")
 }

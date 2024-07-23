@@ -1,13 +1,26 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Res } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { Response } from 'express';
 
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post('register')
-  async registerOrder(@Body() data: any) {
-    return this.ordersService.registerOrder(data);
+  async registerOrder(@Body() data: any, @Res() res: Response) {
+    try {
+      const order = await this.ordersService.registerOrder(data);
+      return res.status(201).json({
+        status: 'success',
+        message: 'Pedido registrado com sucesso',
+        data: order,
+      });
+    } catch (error) {
+      return res.status(404).json({
+        status: 'error',
+        message: error.message,
+      });
+    }
   }
 
   @Get('index')

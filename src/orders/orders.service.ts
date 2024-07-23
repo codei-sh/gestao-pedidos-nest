@@ -19,7 +19,23 @@ export class OrdersService {
 
     const formattedDeliveryDate = new Date(deliveryDate);
 
+    // Verificar se a quantidade de cada produto está disponível em estoque
+    const productsWithStock = await Promise.all(
+      products.map(async (product: any) => {
+        const dbProduct = await this.prisma.product.findUnique({
+          where: { id: product.product_id },
+        });
+        if (!dbProduct || dbProduct.stock < product.quantity) {
+          throw new Error(
+            `Estoque insuficiente para o produto com código #${dbProduct.code}`,
+          );
+        }
+        return { ...product, stock: dbProduct.stock };
+      }),
+    );
+
     const result = await this.prisma.$transaction(async (prisma) => {
+      // Criar o novo pedido
       const newOrder = await prisma.order.create({
         data: {
           client: { connect: { id: client_id } },
@@ -29,7 +45,7 @@ export class OrdersService {
           observations,
           user: { connect: { id: user_id } }, // Conecta o usuário ao pedido
           products: {
-            create: products.map((product: any) => ({
+            create: productsWithStock.map((product: any) => ({
               product: { connect: { id: product.product_id } },
               quantity: Number(product.quantity),
             })),
@@ -42,7 +58,7 @@ export class OrdersService {
 
       // Atualiza o estoque dos produtos
       await Promise.all(
-        products.map((product: any) =>
+        productsWithStock.map((product: any) =>
           prisma.product.update({
             where: { id: product.product_id },
             data: { stock: { decrement: Number(product.quantity) } },
