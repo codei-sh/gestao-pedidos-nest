@@ -18,6 +18,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   Order     Order[]
+  Client    Client[]
 
   @@map("users")
 }
@@ -64,6 +65,8 @@ model Client {
   name          String
   cpf           String?
   reference_day String?
+  user_id       String
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -76,13 +79,13 @@ model Address {
   id           String   @id @default(uuid())
   code         Int      @unique @default(autoincrement())
   active       Boolean  @default(true)
-  zip_code     String
+  zip_code     String?
   street       String
   number       String
   complement   String?
   neighborhood String
-  city         String
-  state        String
+  city         String   @default("Campo Grande")
+  state        String   @default("MS")
   link_maps    String?
   table        String
   table_id     String

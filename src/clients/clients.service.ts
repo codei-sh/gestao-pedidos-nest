@@ -5,7 +5,8 @@ import { PrismaService } from '../prisma/prisma/prisma.service';
 export class ClientsService {
   constructor(private readonly prisma: PrismaService) {}
   async registerClient(data: any) {
-    const { name, cpf, referenceDay, phone, address, selectedSector } = data;
+    const { name, cpf, referenceDay, user_id, phone, address, selectedSector } =
+      data;
 
     return this.prisma.$transaction(async (prisma) => {
       // Criação do cliente
@@ -13,6 +14,7 @@ export class ClientsService {
         data: {
           name,
           cpf,
+          user_id,
           reference_day: referenceDay,
         },
       });

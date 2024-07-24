@@ -31,6 +31,7 @@ export class AuthService {
 
     return {
       user_id: user.id,
+      user_name: user.name,
       roles: user.roles.map((role) => role.nome),
       access_token: accessToken,
     };
