@@ -180,7 +180,16 @@ export class OrdersService {
     const orders = await this.prisma.order.findMany({
       include: {
         client: true, // Inclui os dados do cliente
-        deliveryAddress: true, // Inclui os dados do endereço de entrega
+        deliveryAddress: {
+          include: {
+            sector: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        }, // Inclui os dados do endereço de entrega
         user: true, // Inclui os dados do usuário
         products: {
           include: {
