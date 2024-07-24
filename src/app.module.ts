@@ -16,6 +16,8 @@ import { OrdersController } from './orders/orders.controller';
 import { AuthService } from './auth/auth.service';
 import { AuthController } from './auth/auth.controller';
 import { JwtModule } from '@nestjs/jwt';
+import { PaymentMethodsController } from './payment-methods/payment-methods.controller';
+import { PaymentMethodsService } from './payment-methods/payment-methods.service';
 
 @Module({
   imports: [
@@ -40,6 +42,7 @@ import { JwtModule } from '@nestjs/jwt';
     ClientsController,
     OrdersController,
     AuthController,
+    PaymentMethodsController,
   ],
   providers: [
     AppService,
@@ -49,6 +52,7 @@ import { JwtModule } from '@nestjs/jwt';
     ClientsService,
     OrdersService,
     AuthService,
+    PaymentMethodsService,
   ],
 })
 export class AppModule {}

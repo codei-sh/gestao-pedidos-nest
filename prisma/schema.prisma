@@ -124,6 +124,20 @@ model Phones {
   @@map("phones")
 }
 
+enum OrderStatus {
+  PENDING // Pedido pendente
+  IN_DELIVERY // Em entrega
+  DELIVERED // Entregue
+}
+
+model PaymentMethod {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  orders Order[]
+
+  @@map("payment_methods")
+}
+
 model Order {
   id                  String         @id @default(uuid())
   code                Int            @unique @default(autoincrement())
@@ -133,12 +147,16 @@ model Order {
   products            OrderProduct[]
   amount              Float
   deliveryDate        DateTime
+  payment_method_id   String
   observations        String?        @db.LongText
+  status              OrderStatus    @default(PENDING)
+  paid                Boolean        @default(false)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   user_id             String
   user                User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
   client              Client         @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  PaymentMethod       PaymentMethod? @relation(fields: [payment_method_id], references: [id])
 
   @@map("orders")
 }
