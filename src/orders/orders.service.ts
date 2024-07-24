@@ -197,6 +197,9 @@ export class OrdersService {
           },
         },
       },
+      orderBy: {
+        createdAt: 'desc', // Ordena pelos registros mais recentes
+      },
     });
 
     return orders;
@@ -206,9 +209,18 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
-        client: true, // Inclui os dados do cliente
-        deliveryAddress: true, // Inclui os dados do endereço de entrega
-        user: true, // Inclui os dados do usuário
+        client: true, // Inclui os dados do cliente        // Inclui os dados do endereço de entrega
+        user: true,
+        deliveryAddress: {
+          include: {
+            sector: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        }, // I// Inclui os dados do usuário
         products: {
           include: {
             product: true, // Inclui os dados do produto
@@ -230,7 +242,16 @@ export class OrdersService {
       where: { user_id: userId },
       include: {
         client: true, // Inclui os dados do cliente
-        deliveryAddress: true, // Inclui os dados do endereço de entrega
+        deliveryAddress: {
+          include: {
+            sector: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        }, // Inclui os dados do endereço de entrega
         user: true, // Inclui os dados do usuário
         products: {
           include: {
@@ -238,6 +259,9 @@ export class OrdersService {
           },
         },
         PaymentMethod: true, // Inclui os dados do método de pagamento
+      },
+      orderBy: {
+        createdAt: 'desc', // Ordena pelos registros mais recentes
       },
     });
 
