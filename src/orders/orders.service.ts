@@ -89,6 +89,7 @@ export class OrdersService {
       delivery_address_id,
       products,
       amount,
+      paid,
       payment_method_id,
       deliveryDate,
       observations,
@@ -133,6 +134,7 @@ export class OrdersService {
           amount: amount ? Number(amount) : undefined,
           deliveryDate: formattedDeliveryDate,
           observations,
+          paid,
           user: user_id ? { connect: { id: user_id } } : undefined,
           PaymentMethod: payment_method_id
             ? { connect: { id: payment_method_id } }
