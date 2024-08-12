@@ -35,7 +35,9 @@ export class OrdersController {
 
   @Get('show/:id')
   async findOne(@Param('id') id: string) {
-    return this.ordersService.findOne(id);
+    const test = await this.ordersService.findOne(id);
+
+    return test;
   }
 
   @Patch('update/:id')

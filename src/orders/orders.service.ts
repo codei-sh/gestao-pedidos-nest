@@ -205,11 +205,11 @@ export class OrdersService {
     return orders;
   }
 
-  async findOne(id: string): Promise<Order> {
+  async findOne(id: string): Promise<any> {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
-        client: true, // Inclui os dados do cliente        // Inclui os dados do endereço de entrega
+        client: true,
         user: true,
         deliveryAddress: {
           include: {
@@ -220,13 +220,13 @@ export class OrdersService {
               },
             },
           },
-        }, // I// Inclui os dados do usuário
+        },
         products: {
           include: {
-            product: true, // Inclui os dados do produto
+            product: true,
           },
         },
-        PaymentMethod: true, // Inclui os dados do método de pagamento
+        PaymentMethod: true,
       },
     });
 
@@ -234,7 +234,23 @@ export class OrdersService {
       throw new NotFoundException(`Order with ID ${id} not found`);
     }
 
-    return order;
+    const phones = await this.prisma.phones.findMany({
+      where: {
+        table: 'clients',
+        table_id: order.client.id,
+      },
+      select: {
+        id: true,
+        phone: true,
+        phoneType: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+    console.log(phones);
+    return { ...order, client: { ...order.client, phones } };
   }
 
   async findByUser(userId: string): Promise<Order[]> {
@@ -269,6 +285,54 @@ export class OrdersService {
       throw new NotFoundException(
         `Orders for user with ID ${userId} not found`,
       );
+    }
+
+    return orders;
+  }
+
+  async findByMonthAndYear(month: number, year: number): Promise<Order[]> {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        AND: [
+          {
+            createdAt: {
+              gte: new Date(year, month - 1, 1),
+            },
+          },
+          {
+            createdAt: {
+              lt: new Date(year, month, 1),
+            },
+          },
+        ],
+      },
+      include: {
+        client: true,
+        deliveryAddress: {
+          include: {
+            sector: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        user: true,
+        products: {
+          include: {
+            product: true,
+          },
+        },
+        PaymentMethod: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (!orders || orders.length === 0) {
+      throw new NotFoundException(`Orders for ${month}/${year} not found`);
     }
 
     return orders;
