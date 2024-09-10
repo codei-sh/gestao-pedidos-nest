@@ -5,6 +5,10 @@ import { Order } from '@prisma/client';
 @Injectable()
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
+  private normalizeDateToDateTime(date: string): Date {
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
 
   async registerOrder(data: any): Promise<Order> {
     const {
@@ -81,7 +85,6 @@ export class OrdersService {
 
     return result;
   }
-
   async updateOrder(id: string, data: any): Promise<Order> {
     const {
       client_id,
@@ -95,13 +98,12 @@ export class OrdersService {
       observations,
     } = data;
 
-    const formattedDeliveryDate = deliveryDate
-      ? new Date(deliveryDate)
-      : undefined;
+    const normalizedDeliveryDate = this.normalizeDateToDateTime(deliveryDate);
 
     // Verificar se o pedido existe
     const order = await this.prisma.order.findUnique({
       where: { id },
+      include: { products: true },
     });
 
     if (!order) {
@@ -109,69 +111,69 @@ export class OrdersService {
     }
 
     // Verificar o estoque dos produtos
-    const productsWithStock = await Promise.all(
-      products.map(async (product: any) => {
-        const dbProduct = await this.prisma.product.findUnique({
-          where: { id: product.product_id },
-        });
-        if (!dbProduct || dbProduct.stock < product.quantity) {
-          throw new Error(
-            `Estoque insuficiente para o produto com código #${dbProduct.code}`,
-          );
-        }
-        return { ...product, stock: dbProduct.stock };
-      }),
-    );
-
-    const updatedOrder = await this.prisma.$transaction(async (prisma) => {
-      const updatedOrder = await prisma.order.update({
-        where: { id },
-        data: {
-          client: client_id ? { connect: { id: client_id } } : undefined,
-          deliveryAddress: delivery_address_id
-            ? { connect: { id: delivery_address_id } }
-            : undefined,
-          amount: amount ? Number(amount) : undefined,
-          deliveryDate: formattedDeliveryDate,
-          observations,
-          paid,
-          user: user_id ? { connect: { id: user_id } } : undefined,
-          PaymentMethod: payment_method_id
-            ? { connect: { id: payment_method_id } }
-            : undefined,
-          products: {
-            deleteMany: {}, // Remove os produtos atuais
-            create: productsWithStock.map((product: any) => ({
-              product: { connect: { id: product.product_id } },
-              quantity: Number(product.quantity),
-            })),
-          },
-        },
-        include: {
-          products: {
-            include: {
-              product: true, // Inclui os dados do produto
-            },
-          },
-          client: true, // Inclui os dados do cliente
-          deliveryAddress: true, // Inclui os dados do endereço de entrega
-          user: true, // Inclui os dados do usuário
-          PaymentMethod: true, // Inclui os dados do método de pagamento
-        },
+    for (const product of products) {
+      const dbProduct = await this.prisma.product.findUnique({
+        where: { id: product.product_id },
       });
+      if (!dbProduct || dbProduct.stock < product.quantity) {
+        throw new Error(
+          `Estoque insuficiente para o produto com código #${dbProduct.code}`,
+        );
+      }
+    }
 
-      // Atualizar o estoque dos produtos
-      await Promise.all(
-        productsWithStock.map((product: any) =>
-          prisma.product.update({
-            where: { id: product.product_id },
-            data: { stock: { decrement: Number(product.quantity) } },
-          }),
-        ),
-      );
-
-      return updatedOrder;
+    // Atualizar o pedido
+    const updatedOrder = await this.prisma.order.update({
+      where: { id },
+      data: {
+        client: client_id ? { connect: { id: client_id } } : undefined,
+        deliveryAddress: delivery_address_id
+          ? { connect: { id: delivery_address_id } }
+          : undefined,
+        amount: amount ? Number(amount) : undefined,
+        deliveryDate: normalizedDeliveryDate,
+        observations,
+        paid,
+        user: user_id ? { connect: { id: user_id } } : undefined,
+        PaymentMethod: payment_method_id
+          ? { connect: { id: payment_method_id } }
+          : undefined,
+        products: {
+          deleteMany: {}, // Remove os produtos atuais
+          create: products.map((product: any) => ({
+            product: { connect: { id: product.product_id } },
+            quantity: Number(product.quantity),
+          })),
+        },
+      },
+      include: {
+        products: {
+          include: {
+            product: true,
+          },
+        },
+        client: true,
+        deliveryAddress: true,
+        user: true,
+        PaymentMethod: true,
+      },
     });
+
+    // Restaurar o estoque dos produtos removidos
+    for (const orderProduct of order.products) {
+      await this.prisma.product.update({
+        where: { id: orderProduct.product_id },
+        data: { stock: { increment: orderProduct.quantity } },
+      });
+    }
+
+    // Atualizar o estoque dos novos produtos
+    for (const product of products) {
+      await this.prisma.product.update({
+        where: { id: product.product_id },
+        data: { stock: { decrement: Number(product.quantity) } },
+      });
+    }
 
     return updatedOrder;
   }
