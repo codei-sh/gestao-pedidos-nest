@@ -50,9 +50,22 @@ export class ClientsService {
     });
   }
 
-  async findAllClients() {
-    // Buscar todos os clientes
-    const clients = await this.prisma.client.findMany();
+  async findAllClients(search?: string) {
+    // Se houver um termo de busca com pelo menos 3 caracteres, aplica o filtro
+    let clients;
+    if (search && search.length >= 3) {
+      clients = await this.prisma.client.findMany({
+        where: {
+          OR: [
+            { name: { contains: search } },
+            // Caso queira pesquisar por outros campos, como email:
+            // { email: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      });
+    } else {
+      clients = await this.prisma.client.findMany();
+    }
 
     // Buscar os endereços e telefones associados a cada cliente
     const clientIds = clients.map((client) => client.id);
@@ -76,14 +89,10 @@ export class ClientsService {
     });
 
     // Associar endereços e telefones aos clientes
-    return clients.map((client) => {
-      return {
-        ...client,
-        addresses: addresses.filter(
-          (address) => address.table_id === client.id,
-        ),
-        phones: phones.filter((phone) => phone.table_id === client.id),
-      };
-    });
+    return clients.map((client) => ({
+      ...client,
+      addresses: addresses.filter((address) => address.table_id === client.id),
+      phones: phones.filter((phone) => phone.table_id === client.id),
+    }));
   }
 }
