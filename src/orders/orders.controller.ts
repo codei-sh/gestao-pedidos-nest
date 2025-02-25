@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Res, Patch } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Res, Patch, Query} from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { Response } from 'express';
 
@@ -55,6 +55,29 @@ export class OrdersController {
       });
     } catch (error) {
       return res.status(404).json({
+        status: 'error',
+        message: error.message,
+      });
+    }
+  }
+
+  @Get('revenue')
+  async calculateRevenue(@Query('start') start: string, @Query('end') end: string, @Res() res: Response) {
+    if (!start || !end) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Os parâmetros "start" e "end" são obrigatórios.',
+      });
+    }
+
+    try {
+      const revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(start, end);
+      return res.status(200).json({
+        status: 'success',
+        data: revenueData,
+      });
+    } catch (error) {
+      return res.status(500).json({
         status: 'error',
         message: error.message,
       });

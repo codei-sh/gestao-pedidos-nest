@@ -339,4 +339,142 @@ export class OrdersService {
 
     return orders;
   }
+
+  async calculateRevenueByPeriodAndSeller(startDate: string, endDate: string): Promise<any> {
+    // Converte as strings de data para objetos Date
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Busca os pedidos no intervalo de datas fornecido
+    const orders = await this.prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      include: {
+        products: {
+          include: {
+            product: true, // Inclui os dados do produto, incluindo o preço
+          },
+        },
+        user: true, // Inclui os dados do usuário (vendedor)
+        client: true, // Inclui os dados do cliente
+      },
+    });
+  
+    let totalRevenue = 0;
+    const productBreakdown: Record<string, { productName: string; totalQuantity: number; totalRevenue: number }> = {};
+    const sellerRevenue: Record<string, { 
+      sellerName: string; 
+      totalOrders: number; 
+      totalRevenue: number; 
+      maxOrder: number; 
+      minOrder: number; 
+      orders: Array<any> // Armazena as ordens para cada vendedor
+    }> = {};
+  
+    // Organiza as ordens por vendedor
+    for (const order of orders) {
+      const sellerId = order.user.id;
+      const sellerName = order.user.name;
+      const orderAmount = order.amount;
+  
+      // Atualiza o faturamento por vendedor
+      if (!sellerRevenue[sellerId]) {
+        sellerRevenue[sellerId] = {
+          sellerName,
+          totalOrders: 0,
+          totalRevenue: 0,
+          maxOrder: orderAmount,
+          minOrder: orderAmount,
+          orders: [],
+        };
+      }
+  
+      sellerRevenue[sellerId].totalOrders += 1;
+      sellerRevenue[sellerId].totalRevenue += orderAmount;
+      sellerRevenue[sellerId].maxOrder = Math.max(sellerRevenue[sellerId].maxOrder, orderAmount);
+      sellerRevenue[sellerId].minOrder = Math.min(sellerRevenue[sellerId].minOrder, orderAmount);
+  
+      // Encontra os telefones do cliente
+      const phones = await this.prisma.phones.findMany({
+        where: {
+          table: 'clients',
+          table_id: order.client.id,
+        },
+        select: {
+          phone: true,
+          phoneType: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      });
+  
+      const clientPhone = phones.map(phone => `${phone.phone} (${phone.phoneType.name})`).join(', ');
+  
+      // Cria o registro do pedido para este vendedor
+      const orderRow = {
+        orderCode: order.code,
+        clientName: order.client.name,
+        clientPhone,
+        orderAmount,
+        deliveryDate: order.deliveryDate,
+        status: order.status,
+        products: order.products.map(p => ({
+          productName: p.product.name,
+          quantity: p.quantity,
+          price: p.product.price,
+        })),
+      };
+  
+      sellerRevenue[sellerId].orders.push(orderRow);
+  
+      // Acumula o faturamento por produto
+      order.products.forEach(orderProduct => {
+        const { quantity } = orderProduct;
+        const product = orderProduct.product;
+        if (!product) return;  // Se não houver produto, pula
+  
+        const salePrice = product.price;
+        const revenue = salePrice * quantity;
+  
+        totalRevenue += revenue;
+  
+        // Acumula os dados por produto
+        if (productBreakdown[product.id]) {
+          productBreakdown[product.id].totalQuantity += quantity;
+          productBreakdown[product.id].totalRevenue += revenue;
+        } else {
+          productBreakdown[product.id] = {
+            productName: product.name,
+            totalQuantity: quantity,
+            totalRevenue: revenue,
+          };
+        }
+      });
+    }
+  
+    // Retorna todos os relatórios: faturamento total, breakdown dos produtos, e faturamento por vendedor
+    return {
+      totalRevenue,
+      breakdown: Object.values(productBreakdown),
+      sellerRevenue: Object.values(sellerRevenue).map(seller => ({
+        sellerName: seller.sellerName,
+        totalOrders: seller.totalOrders,
+        totalRevenue: seller.totalRevenue,
+        maxOrder: seller.maxOrder,
+        minOrder: seller.minOrder,
+        orders: seller.orders, // Lista de ordens do vendedor
+      })),
+    };
+  }
+  
+  
+  
+  
+  
 }
