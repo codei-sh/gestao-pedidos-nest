@@ -1,6 +1,7 @@
-import { Controller, Post, Body, Get, Param, Res, Patch, Query} from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Res, Patch, Query, UseGuards } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { Response } from 'express';
+import { AdminGuard } from '../guards/admin.guard'; // Importando o Guard
 
 @Controller('orders')
 export class OrdersController {
@@ -23,9 +24,22 @@ export class OrdersController {
     }
   }
 
+  // Protege a rota com o Guard
   @Get('index')
-  async findAll() {
-    return this.ordersService.findAll();
+  @UseGuards(AdminGuard) // Protege essa rota
+  async findAll(@Res() res: Response) {
+    try {
+      const orders = await this.ordersService.findAll();
+      return res.status(200).json({
+        status: 'success',
+        data: orders,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        status: 'error',
+        message: error.message,
+      });
+    }
   }
 
   @Get('user/:id')
@@ -36,7 +50,6 @@ export class OrdersController {
   @Get('show/:id')
   async findOne(@Param('id') id: string) {
     const test = await this.ordersService.findOne(id);
-
     return test;
   }
 
@@ -61,7 +74,9 @@ export class OrdersController {
     }
   }
 
+  // Protege a rota com o Guard
   @Get('revenue')
+  @UseGuards(AdminGuard) // Protege essa rota
   async calculateRevenue(@Query('start') start: string, @Query('end') end: string, @Res() res: Response) {
     if (!start || !end) {
       return res.status(400).json({
