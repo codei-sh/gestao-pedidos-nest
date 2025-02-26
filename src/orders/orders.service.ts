@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+
+
 import { Order } from '@prisma/client';
 
 @Injectable()
@@ -339,137 +342,156 @@ export class OrdersService {
 
     return orders;
   }
-
   async calculateRevenueByPeriodAndSeller(startDate: string, endDate: string): Promise<any> {
-    // Converte as strings de data para objetos Date
     const start = new Date(startDate);
     const end = new Date(endDate);
-    
-    // Busca os pedidos no intervalo de datas fornecido
-    const orders = await this.prisma.order.findMany({
-      where: {
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      include: {
-        products: {
-          include: {
-            product: true, // Inclui os dados do produto, incluindo o preço
-          },
-        },
-        user: true, // Inclui os dados do usuário (vendedor)
-        client: true, // Inclui os dados do cliente
-      },
-    });
   
-    let totalRevenue = 0;
-    const productBreakdown: Record<string, { productName: string; totalQuantity: number; totalRevenue: number }> = {};
-    const sellerRevenue: Record<string, { 
-      sellerName: string; 
-      totalOrders: number; 
-      totalRevenue: number; 
-      maxOrder: number; 
-      minOrder: number; 
-      orders: Array<any> // Armazena as ordens para cada vendedor
-    }> = {};
+    // Query 1: Busca os pedidos (um registro por pedido)
+    const ordersResult = await this.prisma.$queryRaw<Array<{
+      order_id: string;
+      order_code: number;
+      order_amount: number;
+      deliveryDate: Date | null;
+      status: string;
+      seller_id: string;
+      seller_name: string;
+      client_id: string;
+      client_name: string;
+      client_phones: string | null;
+    }>>`
+      SELECT 
+        o.id AS order_id,
+        o.code AS order_code,
+        o.amount AS order_amount,
+        o.deliveryDate,
+        o.status,
+        u.id AS seller_id,
+        u.name AS seller_name,
+        c.id AS client_id,
+        c.name AS client_name,
+        GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      JOIN clients c ON o.client_id = c.id
+      LEFT JOIN phones ph ON ph.table = 'clients' AND ph.table_id = c.id
+      LEFT JOIN type_phones pt ON ph.type_phone_id = pt.id
+      WHERE o.createdAt BETWEEN ${start} AND ${end}
+      GROUP BY o.id;
+    `;
   
-    // Organiza as ordens por vendedor
-    for (const order of orders) {
-      const sellerId = order.user.id;
-      const sellerName = order.user.name;
-      const orderAmount = order.amount;
+    // Query 2: Breakdown dos produtos vendidos no período (global)
+    const productsResult = await this.prisma.$queryRaw<Array<{
+      product_id: string;
+      product_name: string;
+      totalQuantity: number;
+      totalRevenue: number;
+    }>>`
+      SELECT 
+        op.product_id,
+        p.name AS product_name,
+        SUM(op.quantity) AS totalQuantity,
+        SUM(p.price * op.quantity) AS totalRevenue
+      FROM order_products op
+      JOIN orders o ON op.order_id = o.id
+      JOIN products p ON op.product_id = p.id
+      WHERE o.createdAt BETWEEN ${start} AND ${end}
+      GROUP BY op.product_id;
+    `;
   
-      // Atualiza o faturamento por vendedor
-      if (!sellerRevenue[sellerId]) {
-        sellerRevenue[sellerId] = {
+    // Query 3: Detalhes dos produtos por pedido
+    const orderIds = ordersResult.map(order => order.order_id);
+    let orderProducts: Array<{
+      order_id: string;
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      price: number;
+    }> = [];
+    if (orderIds.length > 0) {
+      orderProducts = await this.prisma.$queryRaw`
+        SELECT 
+          op.order_id,
+          op.product_id,
+          p.name AS product_name,
+          op.quantity,
+          p.price
+        FROM order_products op
+        JOIN products p ON op.product_id = p.id
+        WHERE op.order_id IN (${Prisma.join(orderIds)})
+      `;
+    }
+  
+    // Agrupa os produtos por order_id
+    const orderProductsMap = orderProducts.reduce((acc, item) => {
+      if (!acc[item.order_id]) {
+        acc[item.order_id] = [];
+      }
+      acc[item.order_id].push({
+        productName: item.product_name,
+        quantity: item.quantity,
+        price: item.price,
+      });
+      return acc;
+    }, {} as Record<string, Array<{ productName: string; quantity: number; price: number }>>);
+  
+    // Agregação dos dados dos pedidos por vendedor
+    let overallRevenue = 0;
+    const sellerRevenue = new Map<string, { 
+      sellerName: string;
+      totalOrders: number;
+      totalRevenue: number;
+      maxOrder: number;
+      minOrder: number;
+      orders: Array<{
+        orderCode: number;
+        clientName: string;
+        clientPhone: string;
+        orderAmount: number;
+        deliveryDate: Date | null;
+        status: string;
+        products: Array<{ productName: string; quantity: number; price: number }>;
+      }>;
+    }>();
+  
+    for (const row of ordersResult) {
+      const sellerId = row.seller_id;
+      const sellerName = row.seller_name;
+      const orderAmount = row.order_amount;
+  
+      overallRevenue += orderAmount;
+  
+      if (!sellerRevenue.has(sellerId)) {
+        sellerRevenue.set(sellerId, {
           sellerName,
           totalOrders: 0,
           totalRevenue: 0,
           maxOrder: orderAmount,
           minOrder: orderAmount,
           orders: [],
-        };
+        });
       }
   
-      sellerRevenue[sellerId].totalOrders += 1;
-      sellerRevenue[sellerId].totalRevenue += orderAmount;
-      sellerRevenue[sellerId].maxOrder = Math.max(sellerRevenue[sellerId].maxOrder, orderAmount);
-      sellerRevenue[sellerId].minOrder = Math.min(sellerRevenue[sellerId].minOrder, orderAmount);
+      const sellerData = sellerRevenue.get(sellerId)!;
+      sellerData.totalOrders += 1;
+      sellerData.totalRevenue += orderAmount;
+      sellerData.maxOrder = Math.max(sellerData.maxOrder, orderAmount);
+      sellerData.minOrder = Math.min(sellerData.minOrder, orderAmount);
   
-      // Encontra os telefones do cliente
-      const phones = await this.prisma.phones.findMany({
-        where: {
-          table: 'clients',
-          table_id: order.client.id,
-        },
-        select: {
-          phone: true,
-          phoneType: {
-            select: {
-              name: true,
-            },
-          },
-        },
-      });
-  
-      const clientPhone = phones.map(phone => `${phone.phone} (${phone.phoneType.name})`).join(', ');
-  
-      // Cria o registro do pedido para este vendedor
-      const orderRow = {
-        orderCode: order.code,
-        clientName: order.client.name,
-        clientPhone,
+      sellerData.orders.push({
+        orderCode: row.order_code,
+        clientName: row.client_name,
+        clientPhone: row.client_phones || 'Não informado',
         orderAmount,
-        deliveryDate: order.deliveryDate,
-        status: order.status,
-        products: order.products.map(p => ({
-          productName: p.product.name,
-          quantity: p.quantity,
-          price: p.product.price,
-        })),
-      };
-  
-      sellerRevenue[sellerId].orders.push(orderRow);
-  
-      // Acumula o faturamento por produto
-      order.products.forEach(orderProduct => {
-        const { quantity } = orderProduct;
-        const product = orderProduct.product;
-        if (!product) return;  // Se não houver produto, pula
-  
-        const salePrice = product.price;
-        const revenue = salePrice * quantity;
-  
-        totalRevenue += revenue;
-  
-        // Acumula os dados por produto
-        if (productBreakdown[product.id]) {
-          productBreakdown[product.id].totalQuantity += quantity;
-          productBreakdown[product.id].totalRevenue += revenue;
-        } else {
-          productBreakdown[product.id] = {
-            productName: product.name,
-            totalQuantity: quantity,
-            totalRevenue: revenue,
-          };
-        }
+        deliveryDate: row.deliveryDate,
+        status: row.status,
+        products: orderProductsMap[row.order_id] || []  // Inclui os produtos deste pedido
       });
     }
   
-    // Retorna todos os relatórios: faturamento total, breakdown dos produtos, e faturamento por vendedor
     return {
-      totalRevenue,
-      breakdown: Object.values(productBreakdown),
-      sellerRevenue: Object.values(sellerRevenue).map(seller => ({
-        sellerName: seller.sellerName,
-        totalOrders: seller.totalOrders,
-        totalRevenue: seller.totalRevenue,
-        maxOrder: seller.maxOrder,
-        minOrder: seller.minOrder,
-        orders: seller.orders, // Lista de ordens do vendedor
-      })),
+      totalRevenue: overallRevenue,
+      breakdown: productsResult,
+      sellerRevenue: Array.from(sellerRevenue.values()),
     };
   }
   
