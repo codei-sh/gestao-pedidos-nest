@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Res, Patch } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Res, Patch, Query } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { Response } from 'express';
 
@@ -24,8 +24,20 @@ export class OrdersController {
   }
 
   @Get('index')
-  async findAll() {
-    return this.ordersService.findAll();
+  async findAll(
+    @Query('page') page: string,
+    @Query('perPage') perPage: string,
+    @Query('search') search: string,
+  ) {
+    // Converte os parâmetros para números, se necessário, e define valores padrão
+    const pageNumber = page ? parseInt(page, 10) : 1;
+    const perPageNumber = perPage ? parseInt(perPage, 10) : 50;
+
+    return this.ordersService.findAll({
+      page: pageNumber,
+      perPage: perPageNumber,
+      search: search || '',
+    });
   }
 
   @Get('user/:id')

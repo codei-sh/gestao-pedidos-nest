@@ -178,34 +178,65 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  async findAll(): Promise<Order[]> {
-    const orders = await this.prisma.order.findMany({
-      include: {
-        client: true, // Inclui os dados do cliente
-        deliveryAddress: {
-          include: {
-            sector: {
-              select: {
-                id: true,
-                name: true,
+  async findAll({
+    page = 1,
+    perPage = 50,
+    search = '',
+  }: {
+    page?: number;
+    perPage?: number;
+    search?: string;
+  }): Promise<{ orders: Order[]; total: number }> {
+    const skip = (page - 1) * perPage;
+    const take = perPage;
+  
+    const where: any = search
+      ? {
+          OR: [
+            { code: { contains: search, mode: 'insensitive' } },
+            { client: { is: { name: { contains: search, mode: 'insensitive' } } } },
+            { deliveryAddress: { is: { street: { contains: search, mode: 'insensitive' } } } },
+            { user: { is: { name: { contains: search, mode: 'insensitive' } } } },
+          ],
+        }
+      : {};
+  
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          client: true,
+          deliveryAddress: {
+            include: {
+              sector: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
           },
-        }, // Inclui os dados do endereço de entrega
-        user: true, // Inclui os dados do usuário
-        products: {
-          include: {
-            product: true, // Inclui os dados do produto
+          user: true,
+          products: {
+            include: {
+              product: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc', // Ordena pelos registros mais recentes
-      },
-    });
-
-    return orders;
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+  
+    return { orders, total };
   }
+  
+  
+  
 
   async findOne(id: string): Promise<any> {
     const order = await this.prisma.order.findUnique({
