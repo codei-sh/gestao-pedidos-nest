@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+
+
 import { Order } from '@prisma/client';
 
 @Injectable()
@@ -370,4 +373,161 @@ export class OrdersService {
 
     return orders;
   }
+  async calculateRevenueByPeriodAndSeller(startDate: string, endDate: string): Promise<any> {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+  
+    // Query 1: Busca os pedidos (um registro por pedido)
+    const ordersResult = await this.prisma.$queryRaw<Array<{
+      order_id: string;
+      order_code: number;
+      order_amount: number;
+      deliveryDate: Date | null;
+      status: string;
+      seller_id: string;
+      seller_name: string;
+      client_id: string;
+      client_name: string;
+      client_phones: string | null;
+    }>>`
+      SELECT 
+        o.id AS order_id,
+        o.code AS order_code,
+        o.amount AS order_amount,
+        o.deliveryDate,
+        o.status,
+        u.id AS seller_id,
+        u.name AS seller_name,
+        c.id AS client_id,
+        c.name AS client_name,
+        GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      JOIN clients c ON o.client_id = c.id
+      LEFT JOIN phones ph ON ph.table = 'clients' AND ph.table_id = c.id
+      LEFT JOIN type_phones pt ON ph.type_phone_id = pt.id
+      WHERE o.createdAt BETWEEN ${start} AND ${end}
+      GROUP BY o.id;
+    `;
+  
+    // Query 2: Breakdown dos produtos vendidos no período (global)
+    const productsResult = await this.prisma.$queryRaw<Array<{
+      product_id: string;
+      product_name: string;
+      totalQuantity: number;
+      totalRevenue: number;
+    }>>`
+      SELECT 
+        op.product_id,
+        p.name AS product_name,
+        SUM(op.quantity) AS totalQuantity,
+        SUM(p.price * op.quantity) AS totalRevenue
+      FROM order_products op
+      JOIN orders o ON op.order_id = o.id
+      JOIN products p ON op.product_id = p.id
+      WHERE o.createdAt BETWEEN ${start} AND ${end}
+      GROUP BY op.product_id;
+    `;
+  
+    // Query 3: Detalhes dos produtos por pedido
+    const orderIds = ordersResult.map(order => order.order_id);
+    let orderProducts: Array<{
+      order_id: string;
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      price: number;
+    }> = [];
+    if (orderIds.length > 0) {
+      orderProducts = await this.prisma.$queryRaw`
+        SELECT 
+          op.order_id,
+          op.product_id,
+          p.name AS product_name,
+          op.quantity,
+          p.price
+        FROM order_products op
+        JOIN products p ON op.product_id = p.id
+        WHERE op.order_id IN (${Prisma.join(orderIds)})
+      `;
+    }
+  
+    // Agrupa os produtos por order_id
+    const orderProductsMap = orderProducts.reduce((acc, item) => {
+      if (!acc[item.order_id]) {
+        acc[item.order_id] = [];
+      }
+      acc[item.order_id].push({
+        productName: item.product_name,
+        quantity: item.quantity,
+        price: item.price,
+      });
+      return acc;
+    }, {} as Record<string, Array<{ productName: string; quantity: number; price: number }>>);
+  
+    // Agregação dos dados dos pedidos por vendedor
+    let overallRevenue = 0;
+    const sellerRevenue = new Map<string, { 
+      sellerName: string;
+      totalOrders: number;
+      totalRevenue: number;
+      maxOrder: number;
+      minOrder: number;
+      orders: Array<{
+        orderCode: number;
+        clientName: string;
+        clientPhone: string;
+        orderAmount: number;
+        deliveryDate: Date | null;
+        status: string;
+        products: Array<{ productName: string; quantity: number; price: number }>;
+      }>;
+    }>();
+  
+    for (const row of ordersResult) {
+      const sellerId = row.seller_id;
+      const sellerName = row.seller_name;
+      const orderAmount = row.order_amount;
+  
+      overallRevenue += orderAmount;
+  
+      if (!sellerRevenue.has(sellerId)) {
+        sellerRevenue.set(sellerId, {
+          sellerName,
+          totalOrders: 0,
+          totalRevenue: 0,
+          maxOrder: orderAmount,
+          minOrder: orderAmount,
+          orders: [],
+        });
+      }
+  
+      const sellerData = sellerRevenue.get(sellerId)!;
+      sellerData.totalOrders += 1;
+      sellerData.totalRevenue += orderAmount;
+      sellerData.maxOrder = Math.max(sellerData.maxOrder, orderAmount);
+      sellerData.minOrder = Math.min(sellerData.minOrder, orderAmount);
+  
+      sellerData.orders.push({
+        orderCode: row.order_code,
+        clientName: row.client_name,
+        clientPhone: row.client_phones || 'Não informado',
+        orderAmount,
+        deliveryDate: row.deliveryDate,
+        status: row.status,
+        products: orderProductsMap[row.order_id] || []  // Inclui os produtos deste pedido
+      });
+    }
+  
+    return {
+      totalRevenue: overallRevenue,
+      breakdown: productsResult,
+      sellerRevenue: Array.from(sellerRevenue.values()),
+    };
+  }
+  
+  
+  
+  
+  
 }
