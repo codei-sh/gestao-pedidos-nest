@@ -227,7 +227,7 @@ export class OrdersService {
           },
         },
         orderBy: {
-          createdAt: 'desc',
+          deliveryDate: 'desc',
         },
         skip,
         take,
