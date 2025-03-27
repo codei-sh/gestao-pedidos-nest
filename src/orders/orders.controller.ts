@@ -28,15 +28,17 @@ export class OrdersController {
     @Query('page') page: string,
     @Query('perPage') perPage: string,
     @Query('search') search: string,
+    @Query('date') date: string,
   ) {
     // Converte os parâmetros para números, se necessário, e define valores padrão
     const pageNumber = page ? parseInt(page, 10) : 1;
     const perPageNumber = perPage ? parseInt(perPage, 10) : 50;
-
+    
     return this.ordersService.findAll({
       page: pageNumber,
       perPage: perPageNumber,
       search: search || '',
+      date: date || '',
     });
   }
 

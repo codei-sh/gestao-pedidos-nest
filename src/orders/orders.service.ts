@@ -185,25 +185,41 @@ export class OrdersService {
     page = 1,
     perPage = 50,
     search = '',
+    date = ''
   }: {
     page?: number;
     perPage?: number;
     search?: string;
+    date?: string;
   }): Promise<{ orders: Order[]; total: number }> {
     const skip = (page - 1) * perPage;
-    const take = perPage;
-  
-    const where: any = search
-      ? {
-          OR: [
-            { code: { contains: search, mode: 'insensitive' } },
-            { client: { is: { name: { contains: search, mode: 'insensitive' } } } },
-            { deliveryAddress: { is: { street: { contains: search, mode: 'insensitive' } } } },
-            { user: { is: { name: { contains: search, mode: 'insensitive' } } } },
-          ],
-        }
-      : {};
-  
+    const take = perPage; 
+    
+    console.log(date)
+    const where: any = {
+      AND: [
+        search
+          ? {
+              client: {
+                is: {
+                  name: { contains: search },
+                },
+              },
+            }
+          : {},
+        date
+          ? {
+              deliveryDate: {
+                gte: new Date(date),
+                lt: new Date(new Date(date).setDate(new Date(date).getDate() + 1)),
+              },
+            }
+          : {},
+      ],
+    };
+    
+
+
     const [orders, total] = await Promise.all([
       this.prisma.order.findMany({
         where,
