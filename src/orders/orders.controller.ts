@@ -88,10 +88,33 @@ export class OrdersController {
       const revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(start, end);
       return res.status(200).json({
         status: 'success',
-        data: revenueData,
+        data: {
+          totalRevenue: revenueData.totalRevenue,
+          totalRevenuePaid: revenueData.totalRevenuePaid,
+          totalRevenueUnpaid: revenueData.totalRevenueUnpaid,
+          breakdown: revenueData.breakdown,
+          sellerRevenue: revenueData.sellerRevenue,
+        },
       });
     } catch (error) {
       return res.status(500).json({
+        status: 'error',
+        message: error.message,
+      });
+    }
+  }
+
+  @Patch('markAsPaid/:id')
+  async markAsPaid(@Param('id') id: string, @Res() res: Response) {
+    try {
+      const order = await this.ordersService.markAsPaid(id);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Pedido marcado como pago com sucesso',
+        data: order,
+      });
+    } catch (error) {
+      return res.status(404).json({
         status: 'error',
         message: error.message,
       });

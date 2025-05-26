@@ -400,6 +400,7 @@ export class OrdersService {
       order_amount: number;
       deliveryDate: Date | null;
       status: string;
+      paid: boolean;
       seller_id: string;
       seller_name: string;
       client_id: string;
@@ -411,19 +412,20 @@ export class OrdersService {
         o.code AS order_code,
         o.amount AS order_amount,
         o.deliveryDate,
-        o.status,
-        u.id AS seller_id,
-        u.name AS seller_name,
-        c.id AS client_id,
-        c.name AS client_name,
-        GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
+      o.status,
+      o.paid,
+      u.id AS seller_id,
+      u.name AS seller_name,
+      c.id AS client_id,
+      c.name AS client_name,
+      GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
       FROM orders o
       JOIN users u ON o.user_id = u.id
       JOIN clients c ON o.client_id = c.id
       LEFT JOIN phones ph ON ph.table = 'clients' AND ph.table_id = c.id
       LEFT JOIN type_phones pt ON ph.type_phone_id = pt.id
       WHERE o.createdAt BETWEEN ${start} AND ${end}
-      GROUP BY o.id;
+      GROUP BY o.id, o.paid;
     `;
   
     // Query 2: Breakdown dos produtos vendidos no período (global)
@@ -483,10 +485,14 @@ export class OrdersService {
   
     // Agregação dos dados dos pedidos por vendedor
     let overallRevenue = 0;
-    const sellerRevenue = new Map<string, { 
+    let overallRevenuePaid = 0;
+    let overallRevenueUnpaid = 0;
+    const sellerRevenue = new Map<string, {
       sellerName: string;
       totalOrders: number;
       totalRevenue: number;
+      totalRevenuePaid: number;
+      totalRevenueUnpaid: number;
       maxOrder: number;
       minOrder: number;
       orders: Array<{
@@ -496,34 +502,48 @@ export class OrdersService {
         orderAmount: number;
         deliveryDate: Date | null;
         status: string;
+        paid: boolean;
         products: Array<{ productName: string; quantity: number; price: number }>;
       }>;
     }>();
-  
+
     for (const row of ordersResult) {
       const sellerId = row.seller_id;
       const sellerName = row.seller_name;
       const orderAmount = row.order_amount;
-  
+      const isPaid = row.paid;
+
       overallRevenue += orderAmount;
-  
+      if (isPaid) {
+        overallRevenuePaid += orderAmount;
+      } else {
+        overallRevenueUnpaid += orderAmount
+      }
+
       if (!sellerRevenue.has(sellerId)) {
         sellerRevenue.set(sellerId, {
           sellerName,
           totalOrders: 0,
           totalRevenue: 0,
+          totalRevenuePaid: 0,
+          totalRevenueUnpaid: 0,
           maxOrder: orderAmount,
           minOrder: orderAmount,
           orders: [],
         });
       }
-  
+
       const sellerData = sellerRevenue.get(sellerId)!;
       sellerData.totalOrders += 1;
       sellerData.totalRevenue += orderAmount;
+      if (isPaid) {
+        sellerData.totalRevenuePaid += orderAmount;
+      } else {
+        sellerData.totalRevenueUnpaid += orderAmount;
+      }
       sellerData.maxOrder = Math.max(sellerData.maxOrder, orderAmount);
       sellerData.minOrder = Math.min(sellerData.minOrder, orderAmount);
-  
+
       sellerData.orders.push({
         orderCode: row.order_code,
         clientName: row.client_name,
@@ -531,19 +551,34 @@ export class OrdersService {
         orderAmount,
         deliveryDate: row.deliveryDate,
         status: row.status,
+        paid: row.paid,
         products: orderProductsMap[row.order_id] || []  // Inclui os produtos deste pedido
       });
     }
-  
+
     return {
       totalRevenue: overallRevenue,
+      totalRevenuePaid: overallRevenuePaid,
+      totalRevenueUnpaid: overallRevenueUnpaid,
       breakdown: productsResult,
       sellerRevenue: Array.from(sellerRevenue.values()),
     };
   }
-  
-  
-  
-  
-  
+
+  async markAsPaid(id: string): Promise<Order> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${id} not found`);
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id },
+      data: { paid: !order.paid },
+    });
+
+    return updatedOrder;
+  }
 }

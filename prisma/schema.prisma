@@ -14,11 +14,11 @@ model User {
   email     String   @unique
   password  String
   active    Boolean
-  roles     Role[]   @relation("UserRoles")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  Order     Order[]
   Client    Client[]
+  Order     Order[]
+  roles     Role[]   @relation("UserRoles")
 
   @@map("users")
 }
@@ -27,9 +27,9 @@ model Role {
   id        String   @id @default(uuid())
   code      Int      @unique @default(autoincrement())
   nome      String
-  users     User[]   @relation("UserRoles")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  users     User[]   @relation("UserRoles")
 
   @@map("roles")
 }
@@ -39,10 +39,10 @@ model Product {
   code         Int            @unique @default(autoincrement())
   name         String?
   description  String
-  price        Float
   stock        Int
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+  price        Float
   OrderProduct OrderProduct[]
 
   @@map("products")
@@ -64,14 +64,15 @@ model Client {
   code          Int      @unique @default(autoincrement())
   name          String
   cpf           String?
-  reference_day String?
-  user_id       String
-  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  reference_day String?
+  user_id       String
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   Order         Order[]
 
+  @@index([user_id], map: "clients_user_id_fkey")
   @@map("clients")
 }
 
@@ -83,18 +84,19 @@ model Address {
   street       String
   number       String
   complement   String?
-  neighborhood String
   city         String   @default("Campo Grande")
   state        String   @default("MS")
-  link_maps    String?
-  table        String
-  table_id     String
-  sector_id    String
-  sector       Sector   @relation(fields: [sector_id], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  sector_id    String
+  table        String
+  table_id     String
+  link_maps    String?
+  neighborhood String
+  sector       Sector   @relation(fields: [sector_id], references: [id], onDelete: Cascade)
   Order        Order[]
 
+  @@index([sector_id], map: "addresses_sector_id_fkey")
   @@map("addresses")
 }
 
@@ -117,17 +119,12 @@ model Phones {
   type_phone_id String
   table         String
   table_id      String
-  phoneType     TypePhone @relation(fields: [type_phone_id], references: [id])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  phoneType     TypePhone @relation(fields: [type_phone_id], references: [id])
 
+  @@index([type_phone_id], map: "phones_type_phone_id_fkey")
   @@map("phones")
-}
-
-enum OrderStatus {
-  PENDING // Pedido pendente
-  IN_DELIVERY // Em entrega
-  DELIVERED // Entregue
 }
 
 model PaymentMethod {
@@ -140,36 +137,56 @@ model PaymentMethod {
 
 model Order {
   id                  String         @id @default(uuid())
-  code                Int            @unique @default(autoincrement())
+  code                Int            @unique(map: "code") @default(autoincrement())
   client_id           String
-  deliveryAddress     Address        @relation(fields: [delivery_address_id], references: [id], onDelete: Cascade)
   delivery_address_id String
-  products            OrderProduct[]
   amount              Float
   deliveryDate        DateTime
-  payment_method_id   String
   observations        String?        @db.LongText
-  status              OrderStatus    @default(PENDING)
-  paid                Boolean        @default(false)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   user_id             String
-  user                User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  paid                Boolean        @default(false)
+  payment_method_id   String
+  status              OrderStatus    @default(PENDING)
+  products            OrderProduct[]
   client              Client         @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  PaymentMethod       PaymentMethod? @relation(fields: [payment_method_id], references: [id])
+  deliveryAddress     Address        @relation(fields: [delivery_address_id], references: [id], onDelete: Cascade)
+  PaymentMethod       PaymentMethod  @relation(fields: [payment_method_id], references: [id])
+  user                User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([client_id], map: "orders_client_id_fkey")
+  @@index([delivery_address_id], map: "orders_delivery_address_id_fkey")
+  @@index([payment_method_id], map: "orders_payment_method_id_fkey")
+  @@index([user_id], map: "orders_user_id_fkey")
   @@map("orders")
 }
 
 model OrderProduct {
   id         String   @id @default(uuid())
-  order      Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
   order_id   String
-  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
   product_id String
   quantity   Int
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  order      Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
+  @@index([order_id], map: "order_products_order_id_fkey")
+  @@index([product_id], map: "order_products_product_id_fkey")
   @@map("order_products")
+}
+
+model Files {
+  id       String @id
+  code     Int    @unique @default(autoincrement())
+  file     String
+  table    String
+  table_id String
+}
+
+enum OrderStatus {
+  PENDING
+  IN_DELIVERY
+  DELIVERED
 }
