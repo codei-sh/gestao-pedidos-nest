@@ -29,16 +29,20 @@ export class OrdersController {
     @Query('perPage') perPage: string,
     @Query('search') search: string,
     @Query('date') date: string,
+    @Query('code') code: string,
+    @Query('paid') paid: string,
   ) {
     // Converte os parâmetros para números, se necessário, e define valores padrão
     const pageNumber = page ? parseInt(page, 10) : 1;
     const perPageNumber = perPage ? parseInt(perPage, 10) : 50;
-    
+
     return this.ordersService.findAll({
       page: pageNumber,
       perPage: perPageNumber,
       search: search || '',
       date: date || '',
+      code: code ? parseInt(code, 10) : undefined,
+      paid: paid ? paid === 'true' : undefined,
     });
   }
 
@@ -76,16 +80,25 @@ export class OrdersController {
   }
 
   @Get('revenue')
-  async calculateRevenue(@Query('start') start: string, @Query('end') end: string, @Res() res: Response) {
-    if (!start || !end) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Os parâmetros "start" e "end" são obrigatórios.',
-      });
-    }
-
+  async calculateRevenue(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('code') code: string,
+    @Query('paid') paid: string,
+    @Res() res: Response,
+  ) {
     try {
-      const revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(start, end);
+      let revenueData;
+      if (code) {
+        revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(undefined, undefined, parseInt(code, 10));
+      } else {
+        revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(
+          start,
+          end,
+          undefined,
+          paid ? paid === 'true' : undefined,
+        );
+      }
       return res.status(200).json({
         status: 'success',
         data: {
