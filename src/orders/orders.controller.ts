@@ -83,22 +83,10 @@ export class OrdersController {
   async calculateRevenue(
     @Query('start') start: string,
     @Query('end') end: string,
-    @Query('code') code: string,
-    @Query('paid') paid: string,
     @Res() res: Response,
   ) {
     try {
-      let revenueData;
-      if (code) {
-        revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(undefined, undefined, parseInt(code, 10));
-      } else {
-        revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(
-          start,
-          end,
-          undefined,
-          paid ? paid === 'true' : undefined,
-        );
-      }
+      const revenueData = await this.ordersService.calculateRevenueByPeriodAndSeller(start, end);
       return res.status(200).json({
         status: 'success',
         data: {

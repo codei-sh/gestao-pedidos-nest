@@ -389,17 +389,12 @@ export class OrdersService {
 
     return orders;
   }
-  async calculateRevenueByPeriodAndSeller(startDate: string, endDate: string, code?: number, paid?: boolean): Promise<any> {
-    let start: Date | undefined;
-    let end: Date | undefined;
+  async calculateRevenueByPeriodAndSeller(startDate: string, endDate: string): Promise<any> {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
 
-    if (startDate && endDate) {
-      start = new Date(startDate);
-      end = new Date(endDate);
-    }
-  
     // Query 1: Busca os pedidos (um registro por pedido)
-    let ordersResult: Array<{
+    const ordersResult = await this.prisma.$queryRaw<Array<{
       order_id: string;
       order_code: number;
       order_amount: number;
@@ -411,86 +406,28 @@ export class OrdersService {
       client_id: string;
       client_name: string;
       client_phones: string | null;
-    }>;
+    }>>`
+      SELECT
+        o.id AS order_id,
+        o.code AS order_code,
+        o.amount AS order_amount,
+        o.deliveryDate,
+        o.status,
+        o.paid,
+        u.id AS seller_id,
+        u.name AS seller_name,
+        c.id AS client_id,
+        c.name AS client_name,
+        GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      JOIN clients c ON o.client_id = c.id
+      LEFT JOIN phones ph ON ph.table = 'clients' AND ph.table_id = c.id
+      LEFT JOIN type_phones pt ON ph.type_phone_id = pt.id
+      WHERE o.createdAt BETWEEN ${start} AND ${end}
+      GROUP BY o.id, o.paid;
+    `;
 
-    if (code) {
-      ordersResult = await this.prisma.$queryRaw<Array<{
-        order_id: string;
-        order_code: number;
-        order_amount: number;
-        deliveryDate: Date | null;
-        status: string;
-        paid: boolean;
-        seller_id: string;
-        seller_name: string;
-        client_id: string;
-        client_name: string;
-        client_phones: string | null;
-      }>>`
-        SELECT 
-          o.id AS order_id,
-          o.code AS order_code,
-          o.amount AS order_amount,
-          o.deliveryDate,
-          o.status,
-          o.paid,
-          u.id AS seller_id,
-          u.name AS seller_name,
-          c.id AS client_id,
-          c.name AS client_name,
-          GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
-        FROM orders o
-        JOIN users u ON o.user_id = u.id
-        JOIN clients c ON o.client_id = c.id
-        LEFT JOIN phones ph ON ph.table = 'clients' AND ph.table_id = c.id
-        LEFT JOIN type_phones pt ON ph.type_phone_id = pt.id
-        WHERE o.code = ${code}
-        GROUP BY o.id, o.paid
-        LIMIT 1;
-      `;
-    } else if (start && end) {
-      let whereClause = `WHERE o.createdAt BETWEEN ${start} AND ${end}`;
-      if (paid !== undefined) {
-        whereClause += ` AND o.paid = ${paid}`;
-      }
-
-      ordersResult = await this.prisma.$queryRaw<Array<{
-        order_id: string;
-        order_code: number;
-        order_amount: number;
-        deliveryDate: Date | null;
-        status: string;
-        paid: boolean;
-        seller_id: string;
-        seller_name: string;
-        client_id: string;
-        client_name: string;
-        client_phones: string | null;
-      }>>`
-        SELECT 
-          o.id AS order_id,
-          o.code AS order_code,
-          o.amount AS order_amount,
-          o.deliveryDate,
-          o.status,
-          o.paid,
-          u.id AS seller_id,
-          u.name AS seller_name,
-          c.id AS client_id,
-          c.name AS client_name,
-          GROUP_CONCAT(DISTINCT CONCAT(ph.phone, ' (', pt.name, ')') SEPARATOR ', ') AS client_phones
-        FROM orders o
-        JOIN users u ON o.user_id = u.id
-        JOIN clients c ON o.client_id = c.id
-        LEFT JOIN phones ph ON ph.table = 'clients' AND ph.table_id = c.id
-        LEFT JOIN type_phones pt ON ph.type_phone_id = pt.id
-        ${whereClause}
-        GROUP BY o.id, o.paid;
-      `;
-    } else {
-      ordersResult = [];
-    }
-  
     // Query 2: Breakdown dos produtos vendidos no período (global)
     const productsResult = await this.prisma.$queryRaw<Array<{
       product_id: string;
@@ -498,7 +435,7 @@ export class OrdersService {
       totalQuantity: number;
       totalRevenue: number;
     }>>`
-      SELECT 
+      SELECT
         op.product_id,
         p.name AS product_name,
         SUM(op.quantity) AS totalQuantity,
@@ -509,7 +446,7 @@ export class OrdersService {
       WHERE o.createdAt BETWEEN ${start} AND ${end}
       GROUP BY op.product_id;
     `;
-  
+
     // Query 3: Detalhes dos produtos por pedido
     const orderIds = ordersResult.map(order => order.order_id);
     let orderProducts: Array<{
@@ -521,7 +458,7 @@ export class OrdersService {
     }> = [];
     if (orderIds.length > 0) {
       orderProducts = await this.prisma.$queryRaw`
-        SELECT 
+        SELECT
           op.order_id,
           op.product_id,
           p.name AS product_name,
@@ -532,7 +469,7 @@ export class OrdersService {
         WHERE op.order_id IN (${Prisma.join(orderIds)})
       `;
     }
-  
+
     // Agrupa os produtos por order_id
     const orderProductsMap = orderProducts.reduce((acc, item) => {
       if (!acc[item.order_id]) {
@@ -545,7 +482,7 @@ export class OrdersService {
       });
       return acc;
     }, {} as Record<string, Array<{ productName: string; quantity: number; price: number }>>);
-  
+
     // Agregação dos dados dos pedidos por vendedor
     let overallRevenue = 0;
     let overallRevenuePaid = 0;
